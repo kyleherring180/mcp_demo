@@ -1,4 +1,5 @@
 using McpDemo.Api.Data;
+using McpDemo.Api.Services;
 using McpDemo.Api.Telemetry;
 using Microsoft.EntityFrameworkCore;
 using OpenTelemetry.Exporter;
@@ -20,17 +21,38 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddSingleton<ProductMetrics>();
+builder.Services.AddScoped<ProductReportService>();
 
 var otelConfig = builder.Configuration.GetSection("OpenTelemetry");
 var otlpEndpoint = otelConfig["OtlpEndpoint"];
 
-Action<OtlpExporterOptions>? configureOtlp = !string.IsNullOrWhiteSpace(otlpEndpoint)
+// Separate exporter actions with explicit signal paths
+Action<OtlpExporterOptions>? configureOtlpTraces = !string.IsNullOrWhiteSpace(otlpEndpoint)
     ? opts =>
     {
-        opts.Endpoint = new Uri(otlpEndpoint);
+        opts.Endpoint = new Uri($"{otlpEndpoint}/v1/traces");
         opts.Protocol = OtlpExportProtocol.HttpProtobuf;
     }
     : null;
+
+Action<OtlpExporterOptions>? configureOtlpMetrics = !string.IsNullOrWhiteSpace(otlpEndpoint)
+    ? opts =>
+    {
+        opts.Endpoint = new Uri($"{otlpEndpoint}/v1/metrics");
+        opts.Protocol = OtlpExportProtocol.HttpProtobuf;
+    }
+    : null;
+
+Action<OtlpExporterOptions>? configureOtlpLogs = !string.IsNullOrWhiteSpace(otlpEndpoint)
+    ? opts =>
+    {
+        opts.Endpoint = new Uri($"{otlpEndpoint}/v1/logs");
+        opts.Protocol = OtlpExportProtocol.HttpProtobuf;
+    }
+    : null;
+
+// Expose OTel SDK internal errors in logs
+builder.Logging.AddFilter("OpenTelemetry", LogLevel.Debug);
 
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(r => r.AddService(
@@ -43,8 +65,8 @@ builder.Services.AddOpenTelemetry()
             .AddHttpClientInstrumentation()
             .AddEntityFrameworkCoreInstrumentation();
 
-        if (configureOtlp is not null)
-            tracing.AddOtlpExporter(configureOtlp);
+        if (configureOtlpTraces is not null)
+            tracing.AddOtlpExporter(configureOtlpTraces);
 
         if (builder.Environment.IsDevelopment())
             tracing.AddConsoleExporter();
@@ -57,8 +79,8 @@ builder.Services.AddOpenTelemetry()
             .AddRuntimeInstrumentation()
             .AddMeter(ProductMetrics.MeterName);
 
-        if (configureOtlp is not null)
-            metrics.AddOtlpExporter(configureOtlp);
+        if (configureOtlpMetrics is not null)
+            metrics.AddOtlpExporter(configureOtlpMetrics);
 
         if (builder.Environment.IsDevelopment())
             metrics.AddConsoleExporter();
@@ -69,14 +91,19 @@ builder.Logging.AddOpenTelemetry(logging =>
     logging.IncludeScopes = true;
     logging.IncludeFormattedMessage = true;
 
-    if (configureOtlp is not null)
-        logging.AddOtlpExporter(configureOtlp);
+    if (configureOtlpLogs is not null)
+        logging.AddOtlpExporter(configureOtlpLogs);
 
     if (builder.Environment.IsDevelopment())
         logging.AddConsoleExporter();
 });
 
 var app = builder.Build();
+
+// Confirm OTel endpoint at startup
+var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+startupLogger.LogInformation(">>> OTel endpoint resolved as: [{Endpoint}]",
+    app.Configuration["OpenTelemetry:OtlpEndpoint"]);
 
 if (app.Environment.IsDevelopment())
 {
