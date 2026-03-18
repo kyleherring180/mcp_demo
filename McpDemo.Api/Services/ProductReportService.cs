@@ -26,11 +26,12 @@ public class ProductReportService
     // S3649: User-controlled data used in raw SQL — SQL Injection vulnerability
     public async Task<List<Product>> SearchProductsByNameRaw(string name)
     {
-        var sql = $"SELECT * FROM Products WHERE Name LIKE '%{name}%'";
+        const string sql = "SELECT * FROM Products WHERE Name LIKE @pattern";
 
         var results = new List<Product>();
         await using var connection = new SqlConnection(_connectionString);
         await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@pattern", $"%{name}%");
 
         // S108: Empty catch block swallows all exceptions (Bug)
         try
