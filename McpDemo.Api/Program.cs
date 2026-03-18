@@ -1,5 +1,11 @@
 using McpDemo.Api.Data;
+using McpDemo.Api.Telemetry;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Exporter;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,6 +18,63 @@ builder.Services.AddSwaggerGen(options =>
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddSingleton<ProductMetrics>();
+
+var otelConfig = builder.Configuration.GetSection("OpenTelemetry");
+var otlpEndpoint = otelConfig["OtlpEndpoint"];
+
+Action<OtlpExporterOptions>? configureOtlp = !string.IsNullOrWhiteSpace(otlpEndpoint)
+    ? opts =>
+    {
+        opts.Endpoint = new Uri(otlpEndpoint);
+        opts.Protocol = OtlpExportProtocol.HttpProtobuf;
+    }
+    : null;
+
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService(
+        serviceName: otelConfig["ServiceName"] ?? "McpDemo.Api",
+        serviceVersion: "1.0.0"))
+    .WithTracing(tracing =>
+    {
+        tracing
+            .AddAspNetCoreInstrumentation(opts => opts.RecordException = true)
+            .AddHttpClientInstrumentation()
+            .AddEntityFrameworkCoreInstrumentation();
+
+        if (configureOtlp is not null)
+            tracing.AddOtlpExporter(configureOtlp);
+
+        if (builder.Environment.IsDevelopment())
+            tracing.AddConsoleExporter();
+    })
+    .WithMetrics(metrics =>
+    {
+        metrics
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddRuntimeInstrumentation()
+            .AddMeter(ProductMetrics.MeterName);
+
+        if (configureOtlp is not null)
+            metrics.AddOtlpExporter(configureOtlp);
+
+        if (builder.Environment.IsDevelopment())
+            metrics.AddConsoleExporter();
+    });
+
+builder.Logging.AddOpenTelemetry(logging =>
+{
+    logging.IncludeScopes = true;
+    logging.IncludeFormattedMessage = true;
+
+    if (configureOtlp is not null)
+        logging.AddOtlpExporter(configureOtlp);
+
+    if (builder.Environment.IsDevelopment())
+        logging.AddConsoleExporter();
+});
 
 var app = builder.Build();
 

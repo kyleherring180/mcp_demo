@@ -483,6 +483,7 @@ $RECYCLE.BIN/
 
 #Claude
 *.claude
+*.claude\
 
 #sonarQube
 *.sonarqube
