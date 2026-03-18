@@ -27,29 +27,16 @@ var otelConfig = builder.Configuration.GetSection("OpenTelemetry");
 var otlpEndpoint = otelConfig["OtlpEndpoint"];
 
 // Separate exporter actions with explicit signal paths
-Action<OtlpExporterOptions>? configureOtlpTraces = !string.IsNullOrWhiteSpace(otlpEndpoint)
-    ? opts =>
+Action<OtlpExporterOptions>? ConfigureOtlp(string signal) =>
+    string.IsNullOrWhiteSpace(otlpEndpoint) ? null : opts =>
     {
-        opts.Endpoint = new Uri($"{otlpEndpoint}/v1/traces");
+        opts.Endpoint = new Uri($"{otlpEndpoint}/v1/{signal}");
         opts.Protocol = OtlpExportProtocol.HttpProtobuf;
-    }
-    : null;
+    };
 
-Action<OtlpExporterOptions>? configureOtlpMetrics = !string.IsNullOrWhiteSpace(otlpEndpoint)
-    ? opts =>
-    {
-        opts.Endpoint = new Uri($"{otlpEndpoint}/v1/metrics");
-        opts.Protocol = OtlpExportProtocol.HttpProtobuf;
-    }
-    : null;
-
-Action<OtlpExporterOptions>? configureOtlpLogs = !string.IsNullOrWhiteSpace(otlpEndpoint)
-    ? opts =>
-    {
-        opts.Endpoint = new Uri($"{otlpEndpoint}/v1/logs");
-        opts.Protocol = OtlpExportProtocol.HttpProtobuf;
-    }
-    : null;
+var configureOtlpTraces = ConfigureOtlp("traces");
+var configureOtlpMetrics = ConfigureOtlp("metrics");
+var configureOtlpLogs = ConfigureOtlp("logs");
 
 // Expose OTel SDK internal errors in logs
 builder.Logging.AddFilter("OpenTelemetry", LogLevel.Debug);

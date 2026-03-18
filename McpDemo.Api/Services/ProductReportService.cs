@@ -75,56 +75,19 @@ public class ProductReportService
     // S3776: Cognitive complexity too high — deeply nested conditions (Code Smell)
     public string GetProductStatus(Product product)
     {
-        if (product != null)
-        {
-            if (product.IsActive)
-            {
-                if (product.Stock > 0)
-                {
-                    if (product.Stock > 100)
-                    {
-                        if (product.Price > 500)
-                        {
-                            return "premium-high-stock";
-                        }
-                        else
-                        {
-                            if (product.Price > 100)
-                            {
-                                return "mid-high-stock";
-                            }
-                            else
-                            {
-                                return "budget-high-stock";
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (product.Stock < 10)
-                        {
-                            return "low-stock-warning";
-                        }
-                        else
-                        {
-                            return "in-stock";
-                        }
-                    }
-                }
-                else
-                {
-                    return "out-of-stock";
-                }
-            }
-            else
-            {
-                return "inactive";
-            }
-        }
-        else
-        {
-            return "unknown";
-        }
+        if (product == null) return "unknown";
+        if (!product.IsActive) return "inactive";
+        if (product.Stock == 0) return "out-of-stock";
+        if (product.Stock < 10) return "low-stock-warning";
+        if (product.Stock > 100) return GetHighStockStatus(product.Price);
+        return "in-stock";
+    }
+
+    private static string GetHighStockStatus(decimal price)
+    {
+        if (price > 500) return "premium-high-stock";
+        if (price > 100) return "mid-high-stock";
+        return "budget-high-stock";
     }
 
     // S2234: Arguments passed in wrong order (Bug)
