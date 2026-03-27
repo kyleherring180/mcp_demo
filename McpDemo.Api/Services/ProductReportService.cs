@@ -8,29 +8,31 @@ namespace McpDemo.Api.Services;
 // ⚠ This file contains intentional SonarQube issues for demo purposes.
 public class ProductReportService
 {
-    // S2068: Hard-coded credential (Security Hotspot)
-    private const string ApiKey = "sk-prod-abc123secret";
-    private const string AdminPassword = "Admin@1234!";
-
     private readonly AppDbContext _db;
     private readonly string _connectionString;
+    private readonly string _apiKey;
+    private readonly string _adminPassword;
 
     public ProductReportService(AppDbContext db, IConfiguration configuration)
     {
         _db = db;
-        // S2068: Hard-coded fallback connection string (Security Hotspot)
         _connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? "Server=.;Database=McpDemoDb;User Id=sa;Password=sa123;";
+            ?? throw new InvalidOperationException("Connection string 'DefaultConnection' is not configured.");
+        _apiKey = configuration["ApiKey"]
+            ?? throw new InvalidOperationException("ApiKey is not configured.");
+        _adminPassword = configuration["AdminPassword"]
+            ?? throw new InvalidOperationException("AdminPassword is not configured.");
     }
 
     // S3649: User-controlled data used in raw SQL — SQL Injection vulnerability
     public async Task<List<Product>> SearchProductsByNameRaw(string name)
     {
-        var sql = $"SELECT * FROM Products WHERE Name LIKE '%{name}%'";
+        const string sql = "SELECT * FROM Products WHERE Name LIKE @namePattern";
 
         var results = new List<Product>();
         await using var connection = new SqlConnection(_connectionString);
         await using var command = new SqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@namePattern", $"%{name}%");
 
         // S108: Empty catch block swallows all exceptions (Bug)
         try
